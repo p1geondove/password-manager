@@ -7,4 +7,5 @@ requires-python = ">=3.14"
 dependencies = [
     "appdirs>=1.4.4",
     "pycryptodome>=3.23.0",
+    "pytest>=9.1.0",
 ]

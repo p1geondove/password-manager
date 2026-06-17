@@ -135,7 +135,7 @@ class Cryptor:
         ciphertext = raw[self.off_ciphertext:]
         return salt, nonce, mactag, content_type, ciphertext
 
-    def open(self):
+    def load(self):
         if self.key is None or self.salt is None:
             raise ValueError("missing key and salt, use Cryptor.open_from_password first to get key and salt")
         _, nonce, mactag, content_type , ciphertext = self.parse_raw()
@@ -148,10 +148,10 @@ class Cryptor:
             plaintext = json.loads(plaintext)
         return plaintext
 
-    def open_from_password(self, password:str):
+    def load_from_password(self, password:str):
         salt = self.parse_raw()[0]
         self.key, self.salt = get_key(password, salt)
-        return self.open()
+        return self.load()
 
     def save(self, obj):
         if self.key is None or self.salt is None:
