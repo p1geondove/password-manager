@@ -1,19 +1,41 @@
-from PySide6.QtWidgets import QApplication, QListWidgetItem, QWidget, QVBoxLayout, QLineEdit, QTextEdit, QListWidget, QLabel
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QGroupBox, QListWidgetItem, QWidget, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QListWidget, QLabel, QPushButton
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QShortcut, QKeySequence, QKeyEvent, QCloseEvent
+from PySide6.QtGui import QKeyEvent
+
 import rapidfuzz
 
+from .const import PATH_SVG_EYE
 from .crypt import PWManager, PWField
+
+class PWListWidget(QListWidget):
+    def keyPressEvent(self, event: QKeyEvent, /) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            item = self.currentItem()
+            if item:
+                self.itemDoubleClicked.emit(item)
+        else:
+            super().keyPressEvent(event)
 
 class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("login")
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
         self.setLayout(layout)
 
         self.password_box = QLineEdit(placeholderText="password", echoMode=QLineEdit.EchoMode.Password)
         self.password_box.returnPressed.connect(self.on_login)
+        self.password_box.setStyleSheet("border: 1px solid grey; border-radius: 3px;")
+        self.password_box.textChanged.connect(lambda: self.password_box.setStyleSheet("border: 1px solid grey; border-radius: 3px;"))
         layout.addWidget(self.password_box)
+
+        self.toggle_visible_button = QPushButton()
+        self.toggle_visible_button.setFlat(True)
+        self.toggle_visible_button.setIcon(QIcon(str(PATH_SVG_EYE)))
+        self.toggle_visible_button.setIconSize(QSize(20,20))
+        self.toggle_visible_button.pressed.connect(self.on_toggle_visibitily)
+        layout.addWidget(self.toggle_visible_button)
 
     def on_login(self):
         try:
@@ -22,8 +44,16 @@ class LoginWindow(QWidget):
             self.managerwin.show()
             self.close()
         except Exception as e:
-            print(e)
-            pass
+            print(repr(self.password_box.styleSheet()))
+            self.password_box.setStyleSheet("border: 1px solid red; border-radius: 3px;")
+            print(repr(self.password_box.styleSheet()))
+            print(f"wrong password, password file corrupted or pepper changed")
+
+    def on_toggle_visibitily(self):
+        if self.password_box.echoMode() == QLineEdit.EchoMode.Password:
+            self.password_box.setEchoMode(QLineEdit.EchoMode.Normal)
+        else:
+            self.password_box.setEchoMode(QLineEdit.EchoMode.Password)
 
 class ManagerWindow(QWidget):
     def __init__(self, manager:PWManager):
@@ -39,24 +69,32 @@ class ManagerWindow(QWidget):
         self.searchbox.textChanged.connect(self.on_search)
         self.main_layout.addWidget(self.searchbox)
 
-        self.pwlist = QListWidget()
+        self.pwlist = PWListWidget()
         self.reset_list()
-
-        self.pwlist.itemDoubleClicked.connect(self.on_doubleclick)
-
+        self.pwlist.itemDoubleClicked.connect(self.on_entry_edit)
         # right clicking in qt implies opening a context window, but we dont show that, just pull the mousepos from that to get the QListWidgetItem at that pos
         self.pwlist.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.pwlist.customContextMenuRequested.connect(self.on_rightclick)
 
         self.main_layout.addWidget(self.pwlist)
 
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(self.searchbox.setFocus)
+
     def reset_list(self, *args, **kwargs):
-        print("resetting list")
         self.pwlist.clear()
         for entry in self.manager.load_from_file().values():
             item = QListWidgetItem(entry.name)
             item.setData(Qt.ItemDataRole.UserRole, entry)
             self.pwlist.addItem(item)
+
+    def open_entry_edit(self, entry:PWField):
+        self.entryedit = PWEntryWindow(entry, self.manager)
+        self.entryedit.closed.connect(self.on_search)
+        self.entryedit.show()
+
+    def on_entry_edit(self, item:QListWidgetItem):
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        self.open_entry_edit(entry)
 
     def on_search(self, *args, **kwargs):
         query = self.searchbox.text()
@@ -83,14 +121,9 @@ class ManagerWindow(QWidget):
         QApplication.clipboard().setText(entry.password)
         print(f"put {entry.password} into clipboard")
 
-    def on_doubleclick(self, item:QListWidgetItem):
-        entry = item.data(Qt.ItemDataRole.UserRole)
-        self.entryedit = PWEntryWindow(entry, self.manager)
-        self.entryedit.destroyed.connect(self.reset_list)
-        self.entryedit.destroyed
-        self.entryedit.show()
-
 class PWEntryWindow(QWidget):
+    closed = Signal()
+
     def __init__(self, entry:PWField, manager:PWManager):
         super().__init__()
         self.entry = entry
@@ -103,8 +136,14 @@ class PWEntryWindow(QWidget):
         self.lineedit_name = QLineEdit(placeholderText="name", text=entry.name)
         self.lineedit_username = QLineEdit(placeholderText="username", text=entry.username)
         self.lineedit_email = QLineEdit(placeholderText="email", text=entry.email)
-        self.lineedit_password = QLineEdit(placeholderText="password", text=entry.password)
+        self.lineedit_password = QLineEdit(placeholderText="password", text=entry.password, echoMode=QLineEdit.EchoMode.Password)
         self.textedit_extra = QTextEdit(entry.extra, placeholderText="extra")
+
+        self.toggle_visible_button = QPushButton()
+        self.toggle_visible_button.setFlat(True)
+        self.toggle_visible_button.setIcon(QIcon(str(PATH_SVG_EYE)))
+        self.toggle_visible_button.setIconSize(QSize(20,20))
+        self.toggle_visible_button.pressed.connect(self.on_toggle_visibitily)
 
         self.lineedit_name.returnPressed.connect(self.on_edit)
         self.lineedit_username.returnPressed.connect(self.on_edit)
@@ -115,10 +154,15 @@ class PWEntryWindow(QWidget):
         self.label_creation = QLabel(f"created: {str(entry.creation_time)}")
         self.label_edit = QLabel(f"last edit: {str(entry.edit_time)}")
 
+        passwordgroup = QHBoxLayout()
+        passwordgroup.addWidget(self.lineedit_password)
+        passwordgroup.addWidget(self.toggle_visible_button)
+
         layout.addWidget(self.lineedit_name)
         layout.addWidget(self.lineedit_username)
         layout.addWidget(self.lineedit_email)
-        layout.addWidget(self.lineedit_password)
+        layout.addLayout(passwordgroup)
+
         layout.addWidget(self.label_uuid)
         layout.addWidget(self.label_creation)
         layout.addWidget(self.label_edit)
@@ -132,3 +176,13 @@ class PWEntryWindow(QWidget):
             self.lineedit_password.text(),
             self.textedit_extra.toPlainText()
         )
+
+    def on_toggle_visibitily(self):
+        if self.lineedit_password.echoMode() == QLineEdit.EchoMode.Password:
+            self.lineedit_password.setEchoMode(QLineEdit.EchoMode.Normal)
+        else:
+            self.lineedit_password.setEchoMode(QLineEdit.EchoMode.Password)
+
+    def closeEvent(self, event: QCloseEvent, /) -> None:
+        self.closed.emit()
+        super().closeEvent(event)

@@ -18,3 +18,6 @@ PATH_SYSINFO = PATH_STATEDIR / "sysinfo.json"
 
 PATH_PASSWORD_FILE = Path(user_data_dir(APP_NAME)) / "vault.enc"
 PATH_PASSWORD_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+PATH_ASSETS = Path("assets/")
+PATH_SVG_EYE = PATH_ASSETS / "eye-svgrepo-com.svg"
