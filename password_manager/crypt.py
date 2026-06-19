@@ -1,6 +1,7 @@
 import json
-from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4, UUID
+from datetime import datetime
 
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA512
@@ -8,6 +9,7 @@ from Crypto.Random import get_random_bytes
 from Crypto.Protocol.KDF import PBKDF2
 
 from .const import *
+from .helper import timer
 
 def get_pepper():
     """
@@ -65,14 +67,6 @@ def decrypt_from_password(ciphertext:bytes, salt:bytes, nonce:bytes, mactag:byte
     """
     key,_ = get_key(password, salt)
     return decrypt(ciphertext, key, nonce, mactag)
-
-@dataclass
-class EncFile:
-    salt:bytes
-    nonce:bytes
-    mactag:bytes
-    content_type:int
-    ciphertext:bytes
 
 class Cryptor:
     """
@@ -174,4 +168,93 @@ class Cryptor:
     def save_from_password(self, obj, password:str):
         self.key, self.salt = get_key(password)
         self.save(obj)
+
+    def edit_password(self, password:str):
+        self.key, self.salt = get_key(password)
+
+
+from dataclasses import dataclass
+
+@dataclass()
+class PWField():
+    uuid:UUID
+    name:str
+    username:str
+    email:str
+    password:str
+    extra:str
+    creation_time:datetime
+    edit_time:datetime
+
+    @classmethod
+    def from_json_entry(cls, json_obj:tuple[str,str,str,str,str,str,str,str]):
+        uuid = UUID(json_obj[0])
+        createion_time = datetime.fromisoformat(json_obj[6])
+        edit_time = datetime.fromisoformat(json_obj[7])
+        return cls(uuid, *json_obj[1:6], createion_time, edit_time)
+
+    @classmethod
+    def dict_from_json(cls, json_obj):
+        return {UUID(key):cls.from_json_entry(vals) for key,vals in json.loads(json_obj).items()}
+
+    def to_tuple(self) -> tuple[str,str,str,str,str,str,str,str]:
+        return str(self.uuid), self.name, self.username, self.email, self.password, self.extra, str(self.creation_time), str(self.edit_time)
+
+    def to_json_friendly(self) -> dict[str, tuple[str,str,str,str,str,str,str,str]]:
+        return {str(self.uuid): self.to_tuple()}
+
+class PWManager:
+    def __init__(self, password:str):
+        self.cryptor = Cryptor()
+        self.cryptor.edit_password(password)
+        if not PATH_PASSWORD_FILE.exists():
+            self.save_to_file({})
+        else:
+            self.cryptor.load_from_password(password)
+
+    def load_from_file(self):
+        return PWField.dict_from_json(self.cryptor.load())
+
+    def save_to_file(self, password_data:dict[UUID, PWField]):
+        json_dict = {}
+        for uuid, pwfield in password_data.items():
+            json_dict[str(uuid)] = pwfield.to_tuple()
+        self.cryptor.save(json.dumps(json_dict))
+
+    def add_entry(self, name:str="", username:str="", email:str="", password:str="", extra:str=""):
+        password_data = self.load_from_file()
+        uuid = uuid4()
+        while uuid in password_data:
+            uuid = uuid4()
+        new_entry = PWField(uuid, name, username, email, password, extra, datetime.now(), datetime.now())
+        password_data[uuid] = new_entry
+        self.save_to_file(password_data)
+        return uuid
+
+    def update_entry(self, uuid:UUID, name:str|None=None, username:str|None=None, email:str|None=None, password:str|None=None, extra:str|None=None):
+        password_data = self.load_from_file()
+        if uuid in password_data:
+            field = password_data[uuid]
+            field.name = name if name else field.name
+            field.username = username if username else field.username
+            field.email = email if email else field.email
+            field.password = password if password else field.password
+            field.extra = extra if extra else field.extra
+            field.edit_time = datetime.now()
+        else:
+            field = PWField(
+                uuid,
+                name if name else "",
+                username if username else "",
+                email if email else "",
+                password if password else "",
+                extra if extra else "",
+                datetime.now(),
+                datetime.now()
+            )
+            password_data[uuid] = field
+        self.save_to_file(password_data)
+
+    def get_entry(self, uuid:UUID):
+        return self.load_from_file()[uuid]
 
