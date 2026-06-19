@@ -95,7 +95,7 @@ Prerequisites:
 
 ### File layout
 
-<details><summary>General encrypted file</summary><br/>
+<details><summary>General encrypted file</summary>
 
   Every file has 5 segments that can be split up like this:
   - Bytes 0-32: salt
@@ -105,7 +105,7 @@ Prerequisites:
   - Bytes 65-: ciphertext
 
 </details>
-<details><summary>Password manager file</summary><br/>
+<details><summary>Password manager file</summary>
 
   A password data containing file is in essence just json. The python type actually used is a `dict[UUID, PWField]`.
   A UUID in this case is just a python builtin uuid.uuid4() like `e18d1093-fcdb-468b-9e5a-6b4a4b9aff22` for example.
@@ -128,7 +128,7 @@ Prerequisites:
 
 ## AI
 
-Of course i use AI to help me out. That does not mean that this is vibe-coded. Since im using this as my daily (well techincally monthly, since cookies and so forth) driver i want this to be as secure as possible. My stance on LLMs is not all to controversial i think, but i know what they can and cant do. **There is not a single line of code in this project that has been vibe-coded or copy pasted from any LLM**. So how do i use LLMs then? They are useful for telling me about what libraries there are, for example in this project a LLM told me about the existance of the external [`appdirs`][7] library. LLMs are helpful for formatting `.md` files, they helped me find out about the existence of the `> Warning` block that you see at the top. 
+Of course i use AI to help me out. That does not mean that this is vibe-coded. Since im using this as my daily (well techincally monthly, since cookies and so forth) driver i want this to be as secure as possible. My stance on LLMs is not all to controversial i think, but i know what they can and cant do. **There is not a single line of code in this project that has been vibe-coded or copy pasted from any LLM**. So how do i use LLMs then? They are useful for telling me about what libraries there are, for example in this project a LLM told me about the existance of the external [`appdirs`][7] library. LLMs are helpful for formatting `.md` files, they helped me find out about the existence of the `> Warning` block that you see at the top. Also im not all too familiar with textualize, so LLMs really can help out on the frontend
 
 [1]: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
 [2]: https://doc.qt.io/qtforpython-6/index.html
