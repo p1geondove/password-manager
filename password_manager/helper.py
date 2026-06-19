@@ -1,18 +1,12 @@
 import math
 from time import perf_counter
 
-from PySide6.QtWidgets import QApplication, QWidget
-
 def has_gui():
-    try:
-        app = QApplication([])
-        widget = QWidget()
-        widget.show()
-        widget.hide()
-        app.quit()
+    import sys
+    if sys.platform == "win32":
         return True
-    except:
-        return False
+    import os
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 def fmt_time(amt_seconds:int|float) -> str:
     if amt_seconds <= 0:
