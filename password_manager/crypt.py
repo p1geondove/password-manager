@@ -11,10 +11,17 @@ from Crypto.Protocol.KDF import PBKDF2
 from .const import *
 from .helper import timer
 
+class DecryptError(Exception):
+    pass
+
+class ContentTypeError(Exception):
+    pass
+
+class MissingKeyError(Exception):
+    pass
+
 def get_pepper():
-    """
-    returns local stored pepper or creates new one if none is set
-    """
+    """ returns local stored pepper or creates new one if none is set """
     if not PATH_PEPPER.exists():
         PATH_PEPPER.parent.mkdir(parents=True, exist_ok=True)
         pepper = get_random_bytes(SIZE_PEPPER)
@@ -117,10 +124,18 @@ class Cryptor:
         elif content_type == 2: # decode plaintext to json / dict
             obj = json.loads(payload)
         else:
-            raise ValueError(f"illegal content_type specifier {content_type}")
+            raise ContentTypeError(f"illegal content_type specifier {content_type}")
         return obj
 
     def parse_raw(self):
+        """
+        parses a encrypted file to tuple
+        0 -> salt:bytes
+        1 -> nonce:bytes
+        2 -> mactag:bytes
+        3 -> content_type:int
+        4 -> ciphertext:bytes
+        """
         raw = self.file_path.read_bytes()
         salt = raw[self.off_salt:self.off_nonce]
         nonce = raw[self.off_nonce:self.off_mactag]
@@ -130,10 +145,18 @@ class Cryptor:
         return salt, nonce, mactag, content_type, ciphertext
 
     def load(self):
+        """
+        loads contents of a file using the set key and salt
+        raises MissingKeyError if key and salt has not been set yet
+        raises DecryptError if MAC check failed
+        """
         if self.key is None or self.salt is None:
-            raise ValueError("missing key and salt, use Cryptor.open_from_password first to get key and salt")
+            raise MissingKeyError("missing key and salt, use Cryptor.edit_password first to get key and salt")
         _, nonce, mactag, content_type , ciphertext = self.parse_raw()
-        plaintext = decrypt(ciphertext, self.key, nonce, mactag)
+        try:
+            plaintext = decrypt(ciphertext, self.key, nonce, mactag)
+        except ValueError:
+            raise DecryptError("Cant decrypt contents, wrong password, wrong pepper or corrupted data")
         if content_type == 0: # parse plaintext to bytes -> nothing changes
             pass
         elif content_type == 1: # decode plaintext to str
@@ -143,13 +166,22 @@ class Cryptor:
         return plaintext
 
     def load_from_password(self, password:str):
-        salt = self.parse_raw()[0]
-        self.key, self.salt = get_key(password, salt)
+        """ uses Cryptor.edit_password to get salt and key, then calls Cryptor.load """
+        self.edit_password(password)
         return self.load()
 
     def save(self, obj):
+        """
+        formats obj to bytes according to its type
+        obj:bytes -> obj stays as bytes
+        obj:str -> obj gets utf8 encoded to bytes
+        obj:dict -> obj gets converted to json and then dumped
+        raises MissingKeyError if no key and salt has been set -> use Cryptor.edit_password first
+        raises NotImplementedError if illegal obj type has been passed
+        """
+
         if self.key is None or self.salt is None:
-            raise ValueError("missing key and salt, use Cryptor.open_from_password first to get key and salt")
+            raise MissingKeyError("missing key and salt, use Cryptor.edit_password first to get key and salt")
         if isinstance(obj, bytes):
             content_type = int.to_bytes(0)
             plaintext = obj
@@ -166,17 +198,24 @@ class Cryptor:
         self.file_path.write_bytes(payload)
 
     def save_from_password(self, obj, password:str):
-        self.key, self.salt = get_key(password)
+        """ same as Cryptor.save, just calls Cryptor.edit_password first """
+        self.edit_password(password)
         self.save(obj)
 
     def edit_password(self, password:str):
-        self.key, self.salt = get_key(password)
+        """ checks wether the encrypted file exists and pulls the salt from that, otherwise generates new key/salt pair from password """
+        if self.file_path.exists():
+            salt = self.parse_raw()[0]
+            self.key, self.salt = get_key(password, salt)
+        else:
+            self.key, self.salt = get_key(password)
 
 
 from dataclasses import dataclass
 
 @dataclass()
 class PWField():
+    """ A so called Field or Entry for the password manager/file that can store several bits of data """
     uuid:UUID
     name:str
     username:str
@@ -188,6 +227,7 @@ class PWField():
 
     @classmethod
     def from_json_entry(cls, json_obj:tuple[str,str,str,str,str,str,str,str]):
+        """ returns a new PWField from a password file entry """
         uuid = UUID(json_obj[0])
         createion_time = datetime.fromisoformat(json_obj[6])
         edit_time = datetime.fromisoformat(json_obj[7])
@@ -195,9 +235,11 @@ class PWField():
 
     @classmethod
     def dict_from_json(cls, json_obj):
+        """ returns a dict[UUID, PWField] parsed from a password file """
         return {UUID(key):cls.from_json_entry(vals) for key,vals in json.loads(json_obj).items()}
 
     def to_tuple(self) -> tuple[str,str,str,str,str,str,str,str]:
+        """ returns itself as a tuple """
         return str(self.uuid), self.name, self.username, self.email, self.password, self.extra, str(self.creation_time), str(self.edit_time)
 
     def to_json_friendly(self) -> dict[str, tuple[str,str,str,str,str,str,str,str]]:
