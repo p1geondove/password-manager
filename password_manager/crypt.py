@@ -271,7 +271,13 @@ class PWManager:
         new_entry = PWField(uuid, name, username, email, password, extra, datetime.now(), datetime.now())
         password_data[uuid] = new_entry
         self.save_to_file(password_data)
-        return uuid
+        return new_entry
+
+    def remove_entry(self, uuid:UUID):
+        password_data = self.load_from_file()
+        if not uuid in password_data: return
+        del password_data[uuid]
+        self.save_to_file(password_data)
 
     def update_entry(self, uuid:UUID, name:str|None=None, username:str|None=None, email:str|None=None, password:str|None=None, extra:str|None=None):
         password_data = self.load_from_file()
