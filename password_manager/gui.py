@@ -205,6 +205,7 @@ class PWEntryWindow(QWidget):
         layout.addWidget(self.label_edit)
 
     def closeEvent(self, event: QCloseEvent, /) -> None:
+        self.on_edit()
         self.closed.emit()
         return super().closeEvent(event)
 
