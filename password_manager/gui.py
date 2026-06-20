@@ -1,19 +1,30 @@
-from PySide6.QtWidgets import QApplication, QGroupBox, QListWidgetItem, QWidget, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QListWidget, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QListWidgetItem, QWidget, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QListWidget, QLabel, QPushButton
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QShortcut, QKeySequence, QKeyEvent, QCloseEvent
 from PySide6.QtGui import QKeyEvent
 
 import rapidfuzz
 
-from .const import PATH_SVG_EYE
+from .const import PATH_SVG_EYE, PATH_SVG_MINUS, PATH_SVG_PLUS
 from .crypt import PWManager, PWField
 
 class PWListWidget(QListWidget):
+    itemRemoved = Signal(QListWidgetItem)
+    itemAdded = Signal(QListWidgetItem)
+
     def keyPressEvent(self, event: QKeyEvent, /) -> None:
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            item = self.currentItem()
-            if item:
-                self.itemDoubleClicked.emit(item)
+        item = self.currentItem()
+        if item is None:
+            return
+
+        key = event.key()
+
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.itemDoubleClicked.emit(item)
+        if key == Qt.Key.Key_Plus:
+            self.itemAdded.emit(item)
+        if key in (Qt.Key.Key_Minus, Qt.Key.Key_Delete):
+            self.itemRemoved.emit(item)
         else:
             super().keyPressEvent(event)
 
@@ -62,23 +73,39 @@ class ManagerWindow(QWidget):
 
         self.setWindowTitle("password-manager")
         self.resize(200,300)
-        self.main_layout = QVBoxLayout()
-        self.setLayout(self.main_layout)
+        layout_main = QVBoxLayout()
+        self.setLayout(layout_main)
 
         self.searchbox = QLineEdit(placeholderText="search entries")
         self.searchbox.textChanged.connect(self.on_search)
-        self.main_layout.addWidget(self.searchbox)
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(self.searchbox.setFocus)
+        layout_main.addWidget(self.searchbox)
 
         self.pwlist = PWListWidget()
         self.reset_list()
         self.pwlist.itemDoubleClicked.connect(self.on_entry_edit)
+        self.pwlist.itemAdded.connect(self.on_add)
+        self.pwlist.itemRemoved.connect(self.on_remove)
         # right clicking in qt implies opening a context window, but we dont show that, just pull the mousepos from that to get the QListWidgetItem at that pos
         self.pwlist.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.pwlist.customContextMenuRequested.connect(self.on_rightclick)
+        layout_main.addWidget(self.pwlist)
 
-        self.main_layout.addWidget(self.pwlist)
+        layout_button = QHBoxLayout()
+        self.button_add = QPushButton()
+        self.button_add.setFlat(True)
+        self.button_add.setIcon(QIcon(str(PATH_SVG_PLUS)))
+        self.button_add.setIconSize(QSize(20,20))
+        self.button_add.pressed.connect(self.on_add)
+        layout_button.addWidget(self.button_add)
 
-        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(self.searchbox.setFocus)
+        self.button_remove = QPushButton()
+        self.button_remove.setFlat(True)
+        self.button_remove.setIcon(QIcon(str(PATH_SVG_MINUS)))
+        self.button_remove.setIconSize(QSize(20,20))
+        self.button_remove.pressed.connect(self.on_remove)
+        layout_button.addWidget(self.button_remove)
+        layout_main.addLayout(layout_button)
 
     def reset_list(self, *args, **kwargs):
         self.pwlist.clear()
@@ -120,6 +147,16 @@ class ManagerWindow(QWidget):
         entry = item.data(Qt.ItemDataRole.UserRole)
         QApplication.clipboard().setText(entry.password)
         print(f"put {entry.password} into clipboard")
+
+    def on_add(self):
+        entry = self.manager.add_entry()
+        self.open_entry_edit(entry)
+
+    def on_remove(self):
+        entry = self.pwlist.selectedItems()[0].data(Qt.ItemDataRole.UserRole)
+        self.confirm_window = ConfirmRemoveWindow(self.manager, entry)
+        self.confirm_window.closed.connect(self.on_search)
+        self.confirm_window.show()
 
 class PWEntryWindow(QWidget):
     closed = Signal()
@@ -167,6 +204,11 @@ class PWEntryWindow(QWidget):
         layout.addWidget(self.label_creation)
         layout.addWidget(self.label_edit)
 
+    def closeEvent(self, event: QCloseEvent, /) -> None:
+        self.closed.emit()
+        return super().closeEvent(event)
+
+
     def on_edit(self):
         self.manager.update_entry(
             self.entry.uuid,
@@ -183,6 +225,39 @@ class PWEntryWindow(QWidget):
         else:
             self.lineedit_password.setEchoMode(QLineEdit.EchoMode.Password)
 
+class ConfirmRemoveWindow(QWidget):
+    closed = Signal()
+
+    def __init__(self, manager:PWManager, entry:PWField):
+        super().__init__()
+        self.setWindowTitle("Confirm")
+        self.manager = manager
+        self.entry = entry
+        layout_main = QVBoxLayout()
+        layout_buttons = QHBoxLayout()
+        self.setLayout(layout_main)
+
+        label = QLabel(f'Are you sure you want to remove "{entry.name}"')
+
+        button_yes = QPushButton("Yes")
+        button_yes.clicked.connect(self.on_yes)
+        button_yes.setAutoDefault(True)
+        button_no = QPushButton("No")
+        button_no.clicked.connect(self.on_no)
+        button_no.setAutoDefault(True)
+
+        layout_buttons.addWidget(button_yes)
+        layout_buttons.addWidget(button_no)
+        layout_main.addWidget(label)
+        layout_main.addLayout(layout_buttons)
+
     def closeEvent(self, event: QCloseEvent, /) -> None:
         self.closed.emit()
-        super().closeEvent(event)
+        return super().closeEvent(event)
+
+    def on_yes(self):
+        self.manager.remove_entry(self.entry.uuid)
+        self.close()
+
+    def on_no(self):
+        self.close()

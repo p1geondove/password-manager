@@ -1,6 +1,7 @@
 from pathlib import Path
-
 from appdirs import user_state_dir, user_data_dir
+
+APP_NAME = "password_manager"
 
 SIZE_SALT = 32
 SIZE_PEPPER = 32
@@ -9,15 +10,15 @@ SIZE_NONCE = 16
 SIZE_MAC = 16
 PBKDF2_ITERS = 1_000_000
 
-APP_NAME = "password_manager"
-
 PATH_STATEDIR = Path(user_state_dir(APP_NAME))
 PATH_STATEDIR.mkdir(parents=True, exist_ok=True)
 PATH_PEPPER = PATH_STATEDIR / "pepper"
 PATH_SYSINFO = PATH_STATEDIR / "sysinfo.json"
-
 PATH_PASSWORD_FILE = Path(user_data_dir(APP_NAME)) / "vault.enc"
 PATH_PASSWORD_FILE.parent.mkdir(parents=True, exist_ok=True)
-
 PATH_ASSETS = Path("assets/")
 PATH_SVG_EYE = PATH_ASSETS / "eye-svgrepo-com.svg"
+PATH_SVG_PLUS = PATH_ASSETS / "plus-large-svgrepo-com.svg"
+PATH_SVG_MINUS = PATH_ASSETS / "minus-svgrepo-com.svg"
+PATH_SVG_EXPORT = PATH_ASSETS / "file-arrow-right-svgrepo-com.svg"
+PATH_SCG_SLIDERS = PATH_ASSETS / "sliders-svgrepo-com.svg"
